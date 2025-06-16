@@ -26,6 +26,7 @@ type AudioRecorder struct {
 	// Reference audio
 	referenceFile string
 	audioDuration float64
+	filePathEntry *widget.Entry
 
 	// UI elements
 	openBtn        *widget.Button
@@ -49,7 +50,18 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 		durationLabel: widget.NewLabel("No reference file loaded"),
 	}
 
-	ar.openBtn = widget.NewButton("📁 Open Reference", ar.openReferenceFile)
+	ar.openBtn = widget.NewButton("📁 Browse", ar.openReferenceFile)
+
+	// Add file path entry
+	ar.filePathEntry = widget.NewEntry()
+	ar.filePathEntry.SetPlaceHolder("Enter audio file path or use Browse button")
+	ar.filePathEntry.OnChanged = func(path string) {
+		if path != "" && ar.fileExists(path) {
+			ar.referenceFile = path
+			ar.statusLabel.SetText("Loading reference file...")
+			go ar.getAudioDuration()
+		}
+	}
 	ar.progressBar = widget.NewProgressBar()
 	ar.progressBar.SetValue(0)
 
@@ -75,20 +87,37 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 	return ar
 }
 
+func (ar *AudioRecorder) fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func (ar *AudioRecorder) openReferenceFile() {
-	dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
-		if err != nil || reader == nil {
-			return
-		}
-		defer reader.Close()
+	// Try to use native dialog, but with a timeout fallback
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fyne.Do(func() {
+					ar.statusLabel.SetText("File dialog failed. Please type file path manually.")
+				})
+			}
+		}()
 
-		ar.referenceFile = reader.URI().Path()
-		ar.statusLabel.SetText("Loading reference file...")
+		dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err != nil || reader == nil {
+				return
+			}
+			defer reader.Close()
 
-		// Get audio duration using ffprobe
-		go ar.getAudioDuration()
+			filePath := reader.URI().Path()
+			ar.filePathEntry.SetText(filePath)
+			ar.referenceFile = filePath
+			ar.statusLabel.SetText("Loading reference file...")
 
-	}, ar.window)
+			go ar.getAudioDuration()
+
+		}, ar.window)
+	}()
 }
 
 func (ar *AudioRecorder) getAudioDuration() {
@@ -286,7 +315,7 @@ func (ar *AudioRecorder) playRecording() {
 }
 
 func main() {
-	myApp := app.New()
+	myApp := app.NewWithID("com.audiorecorder.app")
 	myWindow := myApp.NewWindow("Audio Recorder with Reference")
 	myWindow.Resize(fyne.NewSize(450, 400))
 
@@ -295,6 +324,7 @@ func main() {
 	// Reference audio section
 	referenceSection := container.NewVBox(
 		widget.NewLabel("Reference Audio:"),
+		recorder.filePathEntry,
 		recorder.openBtn,
 		recorder.durationLabel,
 		recorder.progressBar,
