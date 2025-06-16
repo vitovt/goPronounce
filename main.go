@@ -19,9 +19,12 @@ import (
 const audioFile = "recording.wav"
 
 type AudioRecorder struct {
-	isRecording bool
-	recordCmd   *exec.Cmd
-	playCmd     *exec.Cmd
+	isRecording  bool
+	isPlayingRef bool
+	isPlayingRec bool
+	recordCmd    *exec.Cmd
+	playRefCmd   *exec.Cmd
+	playRecCmd   *exec.Cmd
 
 	// Reference audio
 	referenceFile string
@@ -73,11 +76,11 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 	ar.endTimeEntry.SetText("00:00")
 	ar.endTimeEntry.SetPlaceHolder("00:00")
 
-	ar.playRefBtn = widget.NewButton("▶️ Play Reference", ar.playReference)
+	ar.playRefBtn = widget.NewButton("▶️ Play Reference", ar.toggleReferencePlayback)
 	ar.playRefBtn.Disable()
 
 	ar.recordBtn = widget.NewButton("🎤 Record", ar.toggleRecording)
-	ar.playBtn = widget.NewButton("▶️ Play Recording", ar.playRecording)
+	ar.playBtn = widget.NewButton("▶️ Play Recording", ar.toggleRecordingPlayback)
 
 	// Initially disable play button if no recording exists
 	if _, err := os.Stat(audioFile); os.IsNotExist(err) {
@@ -168,6 +171,14 @@ func (ar *AudioRecorder) parseTime(timeStr string) float64 {
 	return float64(mins*60 + secs)
 }
 
+func (ar *AudioRecorder) toggleReferencePlayback() {
+	if ar.isPlayingRef {
+		ar.stopReferencePlayback()
+	} else {
+		ar.playReference()
+	}
+}
+
 func (ar *AudioRecorder) playReference() {
 	if ar.referenceFile == "" {
 		ar.statusLabel.SetText("No reference file loaded")
@@ -214,21 +225,37 @@ func (ar *AudioRecorder) playReference() {
 		return
 	}
 
-	ar.playCmd = cmd
+	if err := cmd.Start(); err != nil {
+		ar.statusLabel.SetText("Error starting reference playback")
+		return
+	}
+
+	ar.playRefCmd = cmd
+	ar.isPlayingRef = true
+	ar.playRefBtn.SetText("⏹️ Stop Reference")
 	ar.statusLabel.SetText(fmt.Sprintf("Playing reference (%.1fs)", duration))
 
 	go func() {
-		if err := cmd.Run(); err != nil {
-			fyne.Do(func() {
-				ar.statusLabel.SetText("Error playing reference")
-			})
-		} else {
-			fyne.Do(func() {
-				ar.statusLabel.SetText("Reference playback finished")
-			})
-		}
-		ar.playCmd = nil
+		cmd.Wait()
+		fyne.Do(func() {
+			ar.isPlayingRef = false
+			ar.playRefBtn.SetText("▶️ Play Reference")
+			ar.statusLabel.SetText("Reference playback finished")
+		})
+		ar.playRefCmd = nil
 	}()
+}
+
+func (ar *AudioRecorder) stopReferencePlayback() {
+	if ar.playRefCmd != nil {
+		ar.playRefCmd.Process.Kill()
+		ar.playRefCmd.Wait()
+		ar.playRefCmd = nil
+	}
+
+	ar.isPlayingRef = false
+	ar.playRefBtn.SetText("▶️ Play Reference")
+	ar.statusLabel.SetText("Reference playback stopped")
 }
 
 func (ar *AudioRecorder) toggleRecording() {
@@ -279,6 +306,14 @@ func (ar *AudioRecorder) stopRecording() {
 	ar.statusLabel.SetText("Recording saved to " + audioFile)
 }
 
+func (ar *AudioRecorder) toggleRecordingPlayback() {
+	if ar.isPlayingRec {
+		ar.stopRecordingPlayback()
+	} else {
+		ar.playRecording()
+	}
+}
+
 func (ar *AudioRecorder) playRecording() {
 	if _, err := os.Stat(audioFile); os.IsNotExist(err) {
 		ar.statusLabel.SetText("No recording found")
@@ -289,7 +324,7 @@ func (ar *AudioRecorder) playRecording() {
 
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("cmd", "/c", "start", audioFile)
+		cmd = exec.Command("ffplay", "-nodisp", "-autoexit", audioFile)
 	case "darwin":
 		cmd = exec.Command("afplay", audioFile)
 	case "linux":
@@ -299,19 +334,37 @@ func (ar *AudioRecorder) playRecording() {
 		return
 	}
 
+	if err := cmd.Start(); err != nil {
+		ar.statusLabel.SetText("Error starting recording playback")
+		return
+	}
+
+	ar.playRecCmd = cmd
+	ar.isPlayingRec = true
+	ar.playBtn.SetText("⏹️ Stop Recording")
 	ar.statusLabel.SetText("Playing recording...")
 
 	go func() {
-		if err := cmd.Run(); err != nil {
-			fyne.Do(func() {
-				ar.statusLabel.SetText(fmt.Sprintf("Error playing: %v", err))
-			})
-		} else {
-			fyne.Do(func() {
-				ar.statusLabel.SetText("Recording playback finished")
-			})
-		}
+		cmd.Wait()
+		fyne.Do(func() {
+			ar.isPlayingRec = false
+			ar.playBtn.SetText("▶️ Play Recording")
+			ar.statusLabel.SetText("Recording playback finished")
+		})
+		ar.playRecCmd = nil
 	}()
+}
+
+func (ar *AudioRecorder) stopRecordingPlayback() {
+	if ar.playRecCmd != nil {
+		ar.playRecCmd.Process.Kill()
+		ar.playRecCmd.Wait()
+		ar.playRecCmd = nil
+	}
+
+	ar.isPlayingRec = false
+	ar.playBtn.SetText("▶️ Play Recording")
+	ar.statusLabel.SetText("Recording playback stopped")
 }
 
 func main() {
