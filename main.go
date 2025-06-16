@@ -112,12 +112,17 @@ func (ar *AudioRecorder) playRecording() {
 		return
 	}
 
+	ar.statusLabel.SetText("Playing...")
+
 	go func() {
-		ar.statusLabel.SetText("Playing...")
 		if err := cmd.Run(); err != nil {
-			ar.statusLabel.SetText(fmt.Sprintf("Error playing: %v", err))
+			fyne.Do(func() {
+				ar.statusLabel.SetText(fmt.Sprintf("Error playing: %v", err))
+			})
 		} else {
-			ar.statusLabel.SetText("Playback finished")
+			fyne.Do(func() {
+				ar.statusLabel.SetText("Playback finished")
+			})
 		}
 	}()
 }
