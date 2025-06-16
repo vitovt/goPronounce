@@ -4,11 +4,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -17,18 +21,51 @@ const audioFile = "recording.wav"
 type AudioRecorder struct {
 	isRecording bool
 	recordCmd   *exec.Cmd
-	recordBtn   *widget.Button
-	playBtn     *widget.Button
-	statusLabel *widget.Label
+	playCmd     *exec.Cmd
+
+	// Reference audio
+	referenceFile string
+	audioDuration float64
+
+	// UI elements
+	openBtn        *widget.Button
+	progressBar    *widget.ProgressBar
+	startTimeEntry *widget.Entry
+	endTimeEntry   *widget.Entry
+	playRefBtn     *widget.Button
+	recordBtn      *widget.Button
+	playBtn        *widget.Button
+	statusLabel    *widget.Label
+	durationLabel  *widget.Label
+
+	// Main window reference
+	window fyne.Window
 }
 
-func NewAudioRecorder() *AudioRecorder {
+func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 	ar := &AudioRecorder{
-		statusLabel: widget.NewLabel("Ready to record"),
+		window:        window,
+		statusLabel:   widget.NewLabel("Ready to record"),
+		durationLabel: widget.NewLabel("No reference file loaded"),
 	}
 
+	ar.openBtn = widget.NewButton("📁 Open Reference", ar.openReferenceFile)
+	ar.progressBar = widget.NewProgressBar()
+	ar.progressBar.SetValue(0)
+
+	ar.startTimeEntry = widget.NewEntry()
+	ar.startTimeEntry.SetText("00:00")
+	ar.startTimeEntry.SetPlaceHolder("00:00")
+
+	ar.endTimeEntry = widget.NewEntry()
+	ar.endTimeEntry.SetText("00:00")
+	ar.endTimeEntry.SetPlaceHolder("00:00")
+
+	ar.playRefBtn = widget.NewButton("▶️ Play Reference", ar.playReference)
+	ar.playRefBtn.Disable()
+
 	ar.recordBtn = widget.NewButton("🎤 Record", ar.toggleRecording)
-	ar.playBtn = widget.NewButton("▶️ Play", ar.playRecording)
+	ar.playBtn = widget.NewButton("▶️ Play Recording", ar.playRecording)
 
 	// Initially disable play button if no recording exists
 	if _, err := os.Stat(audioFile); os.IsNotExist(err) {
@@ -36,6 +73,133 @@ func NewAudioRecorder() *AudioRecorder {
 	}
 
 	return ar
+}
+
+func (ar *AudioRecorder) openReferenceFile() {
+	dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
+		if err != nil || reader == nil {
+			return
+		}
+		defer reader.Close()
+
+		ar.referenceFile = reader.URI().Path()
+		ar.statusLabel.SetText("Loading reference file...")
+
+		// Get audio duration using ffprobe
+		go ar.getAudioDuration()
+
+	}, ar.window)
+}
+
+func (ar *AudioRecorder) getAudioDuration() {
+	cmd := exec.Command("ffprobe", "-v", "quiet", "-show_entries",
+		"format=duration", "-of", "csv=p=0", ar.referenceFile)
+
+	output, err := cmd.Output()
+	if err != nil {
+		fyne.Do(func() {
+			ar.statusLabel.SetText("Error reading audio file. Make sure ffmpeg is installed.")
+		})
+		return
+	}
+
+	durationStr := strings.TrimSpace(string(output))
+	duration, err := strconv.ParseFloat(durationStr, 64)
+	if err != nil {
+		fyne.Do(func() {
+			ar.statusLabel.SetText("Error parsing audio duration")
+		})
+		return
+	}
+
+	ar.audioDuration = duration
+
+	fyne.Do(func() {
+		ar.durationLabel.SetText(fmt.Sprintf("Duration: %s", ar.formatTime(duration)))
+		ar.endTimeEntry.SetText(ar.formatTime(duration))
+		ar.playRefBtn.Enable()
+		ar.statusLabel.SetText(fmt.Sprintf("Reference loaded: %s", filepath.Base(ar.referenceFile)))
+	})
+}
+
+func (ar *AudioRecorder) formatTime(seconds float64) string {
+	mins := int(seconds) / 60
+	secs := int(seconds) % 60
+	return fmt.Sprintf("%02d:%02d", mins, secs)
+}
+
+func (ar *AudioRecorder) parseTime(timeStr string) float64 {
+	parts := strings.Split(timeStr, ":")
+	if len(parts) != 2 {
+		return 0
+	}
+
+	mins, _ := strconv.Atoi(parts[0])
+	secs, _ := strconv.Atoi(parts[1])
+	return float64(mins*60 + secs)
+}
+
+func (ar *AudioRecorder) playReference() {
+	if ar.referenceFile == "" {
+		ar.statusLabel.SetText("No reference file loaded")
+		return
+	}
+
+	startTime := ar.parseTime(ar.startTimeEntry.Text)
+	endTime := ar.parseTime(ar.endTimeEntry.Text)
+
+	if endTime <= startTime {
+		ar.statusLabel.SetText("End time must be greater than start time")
+		return
+	}
+
+	if endTime > ar.audioDuration {
+		endTime = ar.audioDuration
+		ar.endTimeEntry.SetText(ar.formatTime(endTime))
+	}
+
+	duration := endTime - startTime
+
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("ffplay", "-ss", fmt.Sprintf("%.2f", startTime),
+			"-t", fmt.Sprintf("%.2f", duration), "-nodisp", "-autoexit", ar.referenceFile)
+	case "darwin":
+		// Create a temporary file with the segment for macOS
+		tempFile := "temp_segment.wav"
+		extractCmd := exec.Command("ffmpeg", "-ss", fmt.Sprintf("%.2f", startTime),
+			"-t", fmt.Sprintf("%.2f", duration), "-i", ar.referenceFile, "-y", tempFile)
+		if err := extractCmd.Run(); err != nil {
+			ar.statusLabel.SetText("Error extracting audio segment")
+			return
+		}
+		cmd = exec.Command("afplay", tempFile)
+		defer os.Remove(tempFile) // Clean up temp file
+	case "linux":
+		cmd = exec.Command("ffplay", "-ss", fmt.Sprintf("%.2f", startTime),
+			"-t", fmt.Sprintf("%.2f", duration), "-nodisp", "-autoexit", ar.referenceFile)
+	default:
+		ar.statusLabel.SetText("Unsupported operating system for reference playback")
+		return
+	}
+
+	ar.playCmd = cmd
+	ar.statusLabel.SetText(fmt.Sprintf("Playing reference (%.1fs)", duration))
+
+	go func() {
+		if err := cmd.Run(); err != nil {
+			fyne.Do(func() {
+				ar.statusLabel.SetText("Error playing reference")
+			})
+		} else {
+			fyne.Do(func() {
+				ar.statusLabel.SetText("Reference playback finished")
+			})
+		}
+		ar.playCmd = nil
+	}()
 }
 
 func (ar *AudioRecorder) toggleRecording() {
@@ -51,13 +215,10 @@ func (ar *AudioRecorder) startRecording() {
 
 	switch runtime.GOOS {
 	case "windows":
-		// Use ffmpeg on Windows (requires ffmpeg to be installed)
 		cmd = exec.Command("ffmpeg", "-f", "dshow", "-i", "audio=default", "-y", audioFile)
 	case "darwin":
-		// Use sox on macOS (requires sox to be installed)
 		cmd = exec.Command("sox", "-t", "coreaudio", "default", audioFile)
 	case "linux":
-		// Use arecord on Linux (part of alsa-utils)
 		cmd = exec.Command("arecord", "-f", "cd", "-t", "wav", audioFile)
 	default:
 		ar.statusLabel.SetText("Unsupported operating system")
@@ -99,20 +260,17 @@ func (ar *AudioRecorder) playRecording() {
 
 	switch runtime.GOOS {
 	case "windows":
-		// Use default Windows media player
 		cmd = exec.Command("cmd", "/c", "start", audioFile)
 	case "darwin":
-		// Use afplay on macOS
 		cmd = exec.Command("afplay", audioFile)
 	case "linux":
-		// Use aplay on Linux
 		cmd = exec.Command("aplay", audioFile)
 	default:
 		ar.statusLabel.SetText("Unsupported operating system for playback")
 		return
 	}
 
-	ar.statusLabel.SetText("Playing...")
+	ar.statusLabel.SetText("Playing recording...")
 
 	go func() {
 		if err := cmd.Run(); err != nil {
@@ -121,7 +279,7 @@ func (ar *AudioRecorder) playRecording() {
 			})
 		} else {
 			fyne.Do(func() {
-				ar.statusLabel.SetText("Playback finished")
+				ar.statusLabel.SetText("Recording playback finished")
 			})
 		}
 	}()
@@ -129,17 +287,45 @@ func (ar *AudioRecorder) playRecording() {
 
 func main() {
 	myApp := app.New()
-	myWindow := myApp.NewWindow("Simple Audio Recorder")
-	myWindow.Resize(fyne.NewSize(300, 150))
+	myWindow := myApp.NewWindow("Audio Recorder with Reference")
+	myWindow.Resize(fyne.NewSize(450, 400))
 
-	recorder := NewAudioRecorder()
+	recorder := NewAudioRecorder(myWindow)
 
-	content := container.NewVBox(
-		recorder.statusLabel,
+	// Reference audio section
+	referenceSection := container.NewVBox(
+		widget.NewLabel("Reference Audio:"),
+		recorder.openBtn,
+		recorder.durationLabel,
+		recorder.progressBar,
+		container.NewGridWithColumns(2,
+			container.NewVBox(
+				widget.NewLabel("Start Time:"),
+				recorder.startTimeEntry,
+			),
+			container.NewVBox(
+				widget.NewLabel("End Time:"),
+				recorder.endTimeEntry,
+			),
+		),
+		recorder.playRefBtn,
+		widget.NewSeparator(),
+	)
+
+	// Recording section
+	recordingSection := container.NewVBox(
+		widget.NewLabel("Recording:"),
 		container.NewHBox(
 			recorder.recordBtn,
 			recorder.playBtn,
 		),
+	)
+
+	content := container.NewVBox(
+		referenceSection,
+		recordingSection,
+		widget.NewSeparator(),
+		recorder.statusLabel,
 	)
 
 	myWindow.SetContent(content)
