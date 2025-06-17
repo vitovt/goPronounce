@@ -79,11 +79,6 @@ func (w *TimeInputWidget) SetTime(timeStr string) {
 	}
 }
 
-// GetTimeInSeconds returns the current time in seconds
-func (w *TimeInputWidget) GetTimeInSeconds() float64 {
-	return float64(w.minutes*60 + w.seconds)
-}
-
 // validateTime ensures the time doesn't exceed maxDuration
 func (w *TimeInputWidget) validateTime() {
 	if w.maxDuration > 0 {
