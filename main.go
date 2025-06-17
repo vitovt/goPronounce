@@ -197,6 +197,19 @@ func (w *TimeInputWidget) CreateRenderer() fyne.WidgetRenderer {
 	return widget.NewSimpleRenderer(w.container)
 }
 
+func (w *TimeInputWidget) SetEnabled(enabled bool) {
+	for _, o := range w.container.Objects {
+		if d, ok := o.(fyne.Disableable); ok {
+			if enabled {
+				d.Enable()
+			} else {
+				d.Disable()
+			}
+		}
+	}
+	w.container.Refresh()
+}
+
 type AudioRecorder struct {
 	isRecording  bool
 	isPlayingRef bool
@@ -267,6 +280,8 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 
 	// Initialize custom time input widgets
 	ar.startTimeInput = NewTimeInputWidget()
+	ar.startTimeInput.SetEnabled(false)
+	ar.startSlider.Disable()
 	ar.startTimeInput.SetOnChanged(func(timeStr string) {
 		if ar.audioDuration > 0 {
 			seconds := ar.parseTime(timeStr)
@@ -278,6 +293,8 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 	})
 
 	ar.endTimeInput = NewTimeInputWidget()
+	ar.endTimeInput.SetEnabled(false)
+	ar.endSlider.Disable()
 	ar.endTimeInput.SetOnChanged(func(timeStr string) {
 		if ar.audioDuration > 0 {
 			seconds := ar.parseTime(timeStr)
@@ -364,6 +381,10 @@ func (ar *AudioRecorder) getAudioDuration() {
 		ar.endTimeInput.SetMaxDuration(duration)
 		ar.startTimeInput.SetMaxDuration(duration)
 		ar.endSlider.SetValue(100)
+		ar.startTimeInput.SetEnabled(true)
+		ar.endTimeInput.SetEnabled(true)
+		ar.startSlider.Enable()
+		ar.endSlider.Enable()
 		ar.playRefBtn.Enable()
 		ar.statusLabel.SetText(fmt.Sprintf("Reference loaded: %s", filepath.Base(ar.referenceFile)))
 	})
