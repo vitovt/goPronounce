@@ -556,7 +556,7 @@ func (ar *AudioRecorder) playRecording() {
 
 	ar.playRecCmd = cmd
 	ar.isPlayingRec = true
-	ar.playBtn.SetText("⏹️ Stop Recording")
+	ar.playBtn.SetText("⏹️ Stop Playing")
 	ar.statusLabel.SetText("Playing recording...")
 
 	go func() {
