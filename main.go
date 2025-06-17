@@ -12,9 +12,9 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/sqweek/dialog"
 )
 
 const audioFile = "recording.wav"
@@ -246,11 +246,12 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 		durationLabel: widget.NewLabel("No reference file loaded"),
 	}
 
-	ar.openBtn = widget.NewButton("📁 Browse", ar.openReferenceFile)
+	ar.openBtn = widget.NewButton("📁 Browse", ar.openNativePicker)
 
 	// Add file path entry
 	ar.filePathEntry = widget.NewEntry()
 	ar.filePathEntry.SetPlaceHolder("Enter audio file path or use Browse button")
+	ar.filePathEntry.Disable()
 	ar.filePathEntry.OnChanged = func(path string) {
 		if path != "" && ar.fileExists(path) {
 			ar.referenceFile = path
@@ -324,32 +325,25 @@ func (ar *AudioRecorder) fileExists(path string) bool {
 	return err == nil
 }
 
-func (ar *AudioRecorder) openReferenceFile() {
-	// Try to use native dialog, but with a timeout fallback
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				fyne.Do(func() {
-					ar.statusLabel.SetText("File dialog failed. Please type file path manually.")
-				})
-			}
-		}()
-
-		dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil || reader == nil {
-				return
-			}
-			defer reader.Close()
-
-			filePath := reader.URI().Path()
-			ar.filePathEntry.SetText(filePath)
-			ar.referenceFile = filePath
-			ar.statusLabel.SetText("Loading reference file...")
-
-			go ar.getAudioDuration()
-
-		}, ar.window)
-	}()
+func (ar *AudioRecorder) openNativePicker() {
+	filePath, err := dialog.
+		File().
+		Title("Select audio file").
+		Filter("Audio", "wav", "mp3", "flac", "ogg").
+		Load()
+	if err != nil {
+		if err != dialog.Cancelled {
+			dialog.Message("%v", err).Title("Error").Error() // optional GUI error
+		}
+		return
+	}
+	// `path` is an absolute path string.
+	fmt.Println("Selected:", filePath)
+	ar.filePathEntry.SetText(filePath)
+	ar.referenceFile = filePath
+	ar.statusLabel.SetText("Loading reference file...")
+	// Load the audio duration in a goroutine
+	//go ar.getAudioDuration()
 }
 
 func (ar *AudioRecorder) getAudioDuration() {
