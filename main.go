@@ -13,10 +13,194 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
 const audioFile = "recording.wav"
+
+// TimeInputWidget is a custom widget for time input with increment/decrement controls
+type TimeInputWidget struct {
+	widget.BaseWidget
+
+	minutes     int
+	seconds     int
+	maxDuration float64 // Maximum duration in seconds
+
+	minutesEntry *widget.Entry
+	secondsEntry *widget.Entry
+
+	onChanged func(string)
+
+	container *fyne.Container
+}
+
+// NewTimeInputWidget creates a new time input widget
+func NewTimeInputWidget() *TimeInputWidget {
+	w := &TimeInputWidget{
+		minutes:     0,
+		seconds:     0,
+		maxDuration: 0,
+	}
+	w.ExtendBaseWidget(w)
+	w.createUI()
+	return w
+}
+
+// SetMaxDuration sets the maximum allowed duration
+func (w *TimeInputWidget) SetMaxDuration(duration float64) {
+	w.maxDuration = duration
+	w.validateTime()
+}
+
+// SetOnChanged sets the callback for when the time changes
+func (w *TimeInputWidget) SetOnChanged(callback func(string)) {
+	w.onChanged = callback
+}
+
+// GetTime returns the current time as a formatted string (MM:SS)
+func (w *TimeInputWidget) GetTime() string {
+	return fmt.Sprintf("%02d:%02d", w.minutes, w.seconds)
+}
+
+// SetTime sets the time from a formatted string (MM:SS)
+func (w *TimeInputWidget) SetTime(timeStr string) {
+	parts := strings.Split(timeStr, ":")
+	if len(parts) == 2 {
+		if mins, err := strconv.Atoi(parts[0]); err == nil {
+			w.minutes = mins
+		}
+		if secs, err := strconv.Atoi(parts[1]); err == nil {
+			w.seconds = secs
+		}
+		w.validateTime()
+		w.updateEntries()
+		w.triggerChanged()
+	}
+}
+
+// GetTimeInSeconds returns the current time in seconds
+func (w *TimeInputWidget) GetTimeInSeconds() float64 {
+	return float64(w.minutes*60 + w.seconds)
+}
+
+// validateTime ensures the time doesn't exceed maxDuration
+func (w *TimeInputWidget) validateTime() {
+	if w.maxDuration > 0 {
+		totalSeconds := w.minutes*60 + w.seconds
+		maxSeconds := int(w.maxDuration)
+
+		if totalSeconds > maxSeconds {
+			w.minutes = maxSeconds / 60
+			w.seconds = maxSeconds % 60
+		}
+	}
+
+	// Ensure seconds don't exceed 59
+	if w.seconds >= 60 {
+		w.minutes += w.seconds / 60
+		w.seconds = w.seconds % 60
+	}
+
+	// Ensure non-negative values
+	if w.minutes < 0 {
+		w.minutes = 0
+	}
+	if w.seconds < 0 {
+		w.seconds = 0
+	}
+}
+
+// updateEntries updates the entry widgets with current values
+func (w *TimeInputWidget) updateEntries() {
+	w.minutesEntry.SetText(fmt.Sprintf("%02d", w.minutes))
+	w.secondsEntry.SetText(fmt.Sprintf("%02d", w.seconds))
+}
+
+// triggerChanged calls the onChanged callback if set
+func (w *TimeInputWidget) triggerChanged() {
+	if w.onChanged != nil {
+		w.onChanged(w.GetTime())
+	}
+}
+
+// createUI creates the UI components
+func (w *TimeInputWidget) createUI() {
+	// Create entry widgets
+	w.minutesEntry = widget.NewEntry()
+	w.minutesEntry.SetText("00")
+	w.minutesEntry.OnChanged = func(text string) {
+		if val, err := strconv.Atoi(text); err == nil && val >= 0 {
+			w.minutes = val
+			w.validateTime()
+			w.updateEntries()
+			w.triggerChanged()
+		}
+	}
+
+	w.secondsEntry = widget.NewEntry()
+	w.secondsEntry.SetText("00")
+	w.secondsEntry.OnChanged = func(text string) {
+		if val, err := strconv.Atoi(text); err == nil && val >= 0 && val < 60 {
+			w.seconds = val
+			w.validateTime()
+			w.updateEntries()
+			w.triggerChanged()
+		}
+	}
+
+	// Create increment/decrement buttons for minutes
+	minUpBtn := widget.NewButtonWithIcon("", theme.MoveUpIcon(), func() {
+		w.minutes++
+		w.validateTime()
+		w.updateEntries()
+		w.triggerChanged()
+	})
+
+	minDownBtn := widget.NewButtonWithIcon("", theme.MoveDownIcon(), func() {
+		if w.minutes > 0 {
+			w.minutes--
+			w.validateTime()
+			w.updateEntries()
+			w.triggerChanged()
+		}
+	})
+
+	// Create increment/decrement buttons for seconds
+	secUpBtn := widget.NewButtonWithIcon("", theme.MoveUpIcon(), func() {
+		w.seconds++
+		w.validateTime()
+		w.updateEntries()
+		w.triggerChanged()
+	})
+
+	secDownBtn := widget.NewButtonWithIcon("", theme.MoveDownIcon(), func() {
+		if w.seconds > 0 {
+			w.seconds--
+			w.validateTime()
+			w.updateEntries()
+			w.triggerChanged()
+		}
+	})
+
+	// Create horizontal layout: ▲mm▼:▲ss▼
+	colonLabel := widget.NewLabel(":")
+
+	w.container = container.NewHBox(
+		minUpBtn,
+		w.minutesEntry,
+		minDownBtn,
+		colonLabel,
+		secUpBtn,
+		w.secondsEntry,
+		secDownBtn,
+	)
+}
+
+// CreateRenderer creates the renderer for this widget
+func (w *TimeInputWidget) CreateRenderer() fyne.WidgetRenderer {
+	return widget.NewSimpleRenderer(w.container)
+}
 
 type AudioRecorder struct {
 	isRecording  bool
@@ -35,8 +219,8 @@ type AudioRecorder struct {
 	openBtn        *widget.Button
 	startSlider    *widget.Slider
 	endSlider      *widget.Slider
-	startTimeEntry *widget.Entry
-	endTimeEntry   *widget.Entry
+	startTimeInput *TimeInputWidget
+	endTimeInput   *TimeInputWidget
 	playRefBtn     *widget.Button
 	recordBtn      *widget.Button
 	playBtn        *widget.Button
@@ -73,7 +257,7 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 	ar.startSlider.OnChanged = func(value float64) {
 		if ar.audioDuration > 0 {
 			seconds := (value / 100) * ar.audioDuration
-			ar.startTimeEntry.SetText(ar.formatTime(seconds))
+			ar.startTimeInput.SetTime(ar.formatTime(seconds))
 		}
 	}
 
@@ -82,14 +266,13 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 	ar.endSlider.OnChanged = func(value float64) {
 		if ar.audioDuration > 0 {
 			seconds := (value / 100) * ar.audioDuration
-			ar.endTimeEntry.SetText(ar.formatTime(seconds))
+			ar.endTimeInput.SetTime(ar.formatTime(seconds))
 		}
 	}
 
-	ar.startTimeEntry = widget.NewEntry()
-	ar.startTimeEntry.SetText("00:00")
-	ar.startTimeEntry.SetPlaceHolder("00:00")
-	ar.startTimeEntry.OnChanged = func(timeStr string) {
+	// Initialize custom time input widgets
+	ar.startTimeInput = NewTimeInputWidget()
+	ar.startTimeInput.SetOnChanged(func(timeStr string) {
 		if ar.audioDuration > 0 {
 			seconds := ar.parseTime(timeStr)
 			if seconds >= 0 && seconds <= ar.audioDuration {
@@ -97,12 +280,10 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 				ar.startSlider.SetValue(percentage)
 			}
 		}
-	}
+	})
 
-	ar.endTimeEntry = widget.NewEntry()
-	ar.endTimeEntry.SetText("00:00")
-	ar.endTimeEntry.SetPlaceHolder("00:00")
-	ar.endTimeEntry.OnChanged = func(timeStr string) {
+	ar.endTimeInput = NewTimeInputWidget()
+	ar.endTimeInput.SetOnChanged(func(timeStr string) {
 		if ar.audioDuration > 0 {
 			seconds := ar.parseTime(timeStr)
 			if seconds >= 0 && seconds <= ar.audioDuration {
@@ -110,7 +291,7 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 				ar.endSlider.SetValue(percentage)
 			}
 		}
-	}
+	})
 
 	ar.playRefBtn = widget.NewButton("▶️ Play Reference", ar.toggleReferencePlayback)
 	ar.playRefBtn.Disable()
@@ -184,7 +365,9 @@ func (ar *AudioRecorder) getAudioDuration() {
 
 	fyne.Do(func() {
 		ar.durationLabel.SetText(fmt.Sprintf("Duration: %s", ar.formatTime(duration)))
-		ar.endTimeEntry.SetText(ar.formatTime(duration))
+		ar.endTimeInput.SetTime(ar.formatTime(duration))
+		ar.endTimeInput.SetMaxDuration(duration)
+		ar.startTimeInput.SetMaxDuration(duration)
 		ar.endSlider.SetValue(100)
 		ar.playRefBtn.Enable()
 		ar.statusLabel.SetText(fmt.Sprintf("Reference loaded: %s", filepath.Base(ar.referenceFile)))
@@ -222,8 +405,8 @@ func (ar *AudioRecorder) playReference() {
 		return
 	}
 
-	startTime := ar.parseTime(ar.startTimeEntry.Text)
-	endTime := ar.parseTime(ar.endTimeEntry.Text)
+	startTime := ar.parseTime(ar.startTimeInput.GetTime())
+	endTime := ar.parseTime(ar.endTimeInput.GetTime())
 
 	if endTime <= startTime {
 		ar.statusLabel.SetText("End time must be greater than start time")
@@ -232,7 +415,7 @@ func (ar *AudioRecorder) playReference() {
 
 	if endTime > ar.audioDuration {
 		endTime = ar.audioDuration
-		ar.endTimeEntry.SetText(ar.formatTime(endTime))
+		ar.endTimeInput.SetTime(ar.formatTime(endTime))
 	}
 
 	duration := endTime - startTime
@@ -407,7 +590,7 @@ func (ar *AudioRecorder) stopRecordingPlayback() {
 func main() {
 	myApp := app.NewWithID("com.audiorecorder.app")
 	myWindow := myApp.NewWindow("Audio Recorder with Reference")
-	myWindow.Resize(fyne.NewSize(450, 400))
+	myWindow.Resize(fyne.NewSize(600, 450))
 
 	recorder := NewAudioRecorder(myWindow)
 
@@ -417,17 +600,18 @@ func main() {
 		recorder.filePathEntry,
 		recorder.openBtn,
 		recorder.durationLabel,
+		// Fixed layout: labels in one row, time inputs in next row, sliders in third row
 		container.NewGridWithColumns(2,
-			container.NewVBox(
-				widget.NewLabel("Start Time:"),
-				recorder.startTimeEntry,
-				recorder.startSlider,
-			),
-			container.NewVBox(
-				widget.NewLabel("End Time:"),
-				recorder.endTimeEntry,
-				recorder.endSlider,
-			),
+			widget.NewLabel("Start Time:"),
+			widget.NewLabel("End Time:"),
+		),
+		container.NewGridWithColumns(2,
+			recorder.startTimeInput,
+			recorder.endTimeInput,
+		),
+		container.NewGridWithColumns(2,
+			recorder.startSlider,
+			recorder.endSlider,
 		),
 		recorder.playRefBtn,
 		widget.NewSeparator(),
