@@ -33,7 +33,8 @@ type AudioRecorder struct {
 
 	// UI elements
 	openBtn        *widget.Button
-	progressBar    *widget.ProgressBar
+	startSlider    *widget.Slider
+	endSlider      *widget.Slider
 	startTimeEntry *widget.Entry
 	endTimeEntry   *widget.Entry
 	playRefBtn     *widget.Button
@@ -65,16 +66,51 @@ func NewAudioRecorder(window fyne.Window) *AudioRecorder {
 			go ar.getAudioDuration()
 		}
 	}
-	ar.progressBar = widget.NewProgressBar()
-	ar.progressBar.SetValue(0)
+
+	// Initialize time sliders
+	ar.startSlider = widget.NewSlider(0, 100)
+	ar.startSlider.SetValue(0)
+	ar.startSlider.OnChanged = func(value float64) {
+		if ar.audioDuration > 0 {
+			seconds := (value / 100) * ar.audioDuration
+			ar.startTimeEntry.SetText(ar.formatTime(seconds))
+		}
+	}
+
+	ar.endSlider = widget.NewSlider(0, 100)
+	ar.endSlider.SetValue(100)
+	ar.endSlider.OnChanged = func(value float64) {
+		if ar.audioDuration > 0 {
+			seconds := (value / 100) * ar.audioDuration
+			ar.endTimeEntry.SetText(ar.formatTime(seconds))
+		}
+	}
 
 	ar.startTimeEntry = widget.NewEntry()
 	ar.startTimeEntry.SetText("00:00")
 	ar.startTimeEntry.SetPlaceHolder("00:00")
+	ar.startTimeEntry.OnChanged = func(timeStr string) {
+		if ar.audioDuration > 0 {
+			seconds := ar.parseTime(timeStr)
+			if seconds >= 0 && seconds <= ar.audioDuration {
+				percentage := (seconds / ar.audioDuration) * 100
+				ar.startSlider.SetValue(percentage)
+			}
+		}
+	}
 
 	ar.endTimeEntry = widget.NewEntry()
 	ar.endTimeEntry.SetText("00:00")
 	ar.endTimeEntry.SetPlaceHolder("00:00")
+	ar.endTimeEntry.OnChanged = func(timeStr string) {
+		if ar.audioDuration > 0 {
+			seconds := ar.parseTime(timeStr)
+			if seconds >= 0 && seconds <= ar.audioDuration {
+				percentage := (seconds / ar.audioDuration) * 100
+				ar.endSlider.SetValue(percentage)
+			}
+		}
+	}
 
 	ar.playRefBtn = widget.NewButton("▶️ Play Reference", ar.toggleReferencePlayback)
 	ar.playRefBtn.Disable()
@@ -149,6 +185,7 @@ func (ar *AudioRecorder) getAudioDuration() {
 	fyne.Do(func() {
 		ar.durationLabel.SetText(fmt.Sprintf("Duration: %s", ar.formatTime(duration)))
 		ar.endTimeEntry.SetText(ar.formatTime(duration))
+		ar.endSlider.SetValue(100)
 		ar.playRefBtn.Enable()
 		ar.statusLabel.SetText(fmt.Sprintf("Reference loaded: %s", filepath.Base(ar.referenceFile)))
 	})
@@ -380,15 +417,16 @@ func main() {
 		recorder.filePathEntry,
 		recorder.openBtn,
 		recorder.durationLabel,
-		recorder.progressBar,
 		container.NewGridWithColumns(2,
 			container.NewVBox(
 				widget.NewLabel("Start Time:"),
 				recorder.startTimeEntry,
+				recorder.startSlider,
 			),
 			container.NewVBox(
 				widget.NewLabel("End Time:"),
 				recorder.endTimeEntry,
+				recorder.endSlider,
 			),
 		),
 		recorder.playRefBtn,
