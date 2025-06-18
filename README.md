@@ -1,9 +1,10 @@
 # goPronounce - Audio-Pronounce Trainer
-**goPronounce** is a lightweight desktop trainer for sharpening your foreign-language pronunciation.
-**goPronounce** — це невеличкий настільний застосунок-тренажер, який допомагає покращувати вимову іноземними мовами через метод «слухай → повторюй → порівнюй».
-**goPronounce** ist ein schlanker Desktop-Trainer, mit dem du deine Aussprache in Fremdsprachen verbessern kannst. Lade eine Referenz-Audiodatei, wähle einen kurzen Abschnitt, höre dem Muttersprachler zu, nimm deine Version auf und vergleiche beide Aufnahmen, bis deine Aussprache passt.
+* **goPronounce** is a lightweight desktop trainer for sharpening your foreign-language pronunciation.
+* **goPronounce** — це невеличкий настільний застосунок-тренажер, який допомагає покращувати вимову іноземними мовами через метод «слухай → повторюй → порівнюй».
+* **goPronounce** ist ein schlanker Desktop-Trainer, mit dem du deine Aussprache in Fremdsprachen verbessern kannst. Lade eine Referenz-Audiodatei, wähle einen kurzen Abschnitt, höre dem Muttersprachler zu, nimm deine Version auf und vergleiche beide Aufnahmen, bis deine Aussprache passt.
+![ksnip_20250617-213316](https://github.com/user-attachments/assets/43e1c47a-16f9-42ca-b5d2-21951192e3de)
 
-**Jump to:** [English](#english) • [Українська](#українська) • [Deutsch](#deutsch)
+**Jump to:** [English](#english) • **Перейти до:** [Українська](#українська) • **Springe zu:** [Deutsch](#deutsch)
 
 ---
 
