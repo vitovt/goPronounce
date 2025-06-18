@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -21,6 +23,7 @@ import (
 const audioFileName = "goPronounceRecording.wav"
 
 var audioFile = filepath.Join(os.TempDir(), audioFileName)
+var recordDevice string
 
 // TimeInputWidget is a custom widget for time input with increment/decrement controls
 type TimeInputWidget struct {
@@ -235,6 +238,7 @@ type GoPronounce struct {
 	playRefBtn     *widget.Button
 	recordBtn      *widget.Button
 	playBtn        *widget.Button
+	settingsBtn    *widget.Button
 	statusLabel    *widget.Label
 	durationLabel  *widget.Label
 
@@ -314,6 +318,10 @@ func NewGoPronounce(window fyne.Window) *GoPronounce {
 
 	gp.recordBtn = widget.NewButton("🎤 Record", gp.toggleRecording)
 	gp.playBtn = widget.NewButton("▶️ Play Recording", gp.toggleRecordingPlayback)
+
+	gp.settingsBtn = widget.NewButtonWithIcon("⚙ Settings…", theme.SettingsIcon(), func() {
+		gp.showInputSettings()
+	})
 
 	// Initially disable play button if no recording exists
 	if _, err := os.Stat(audioFile); os.IsNotExist(err) {
@@ -500,18 +508,38 @@ func (gp *GoPronounce) toggleRecording() {
 
 func (gp *GoPronounce) startRecording() {
 	var cmd *exec.Cmd
+	var commandArgs []string
 
 	switch runtime.GOOS {
 	case "windows":
-		cmd = exec.Command("ffmpeg", "-f", "dshow", "-i", "audio=default", "-y", audioFile)
+		source := "audio=default"
+		if recordDevice != "" {
+			source = fmt.Sprintf("%s", recordDevice)
+		}
+		commandArgs = []string{"ffmpeg", "-f", "dshow", "-i", source, "-y", audioFile}
+
 	case "darwin":
-		cmd = exec.Command("sox", "-t", "coreaudio", "default", audioFile)
+		source := "default"
+		if recordDevice != "" {
+			source = recordDevice
+		}
+		commandArgs = []string{"sox", "-t", "coreaudio", source, audioFile}
+
 	case "linux":
-		cmd = exec.Command("arecord", "-f", "cd", "-t", "wav", audioFile)
+		source := "default"
+		if recordDevice != "" {
+			source = fmt.Sprintf("%s", recordDevice)
+		}
+		// record through Pulse/PipeWire so virtual sources (rnnoise, monitors) work
+		commandArgs = []string{"ffmpeg", "-f", "pulse",
+			"-i", fmt.Sprintf("%s", source),
+			"-ac", "1", "-y", audioFile}
 	default:
 		gp.statusLabel.SetText("Unsupported operating system")
 		return
 	}
+
+	cmd = exec.Command(commandArgs[0], commandArgs[1:]...)
 
 	if err := cmd.Start(); err != nil {
 		gp.statusLabel.SetText(fmt.Sprintf("Error starting recording: %v", err))
@@ -599,6 +627,81 @@ func (gp *GoPronounce) stopRecordingPlayback() {
 	gp.statusLabel.SetText("Recording playback stopped")
 }
 
+func listInputDevices() ([]string, error) {
+	switch runtime.GOOS {
+	case "linux":
+		out, err := exec.Command("pactl", "list", "short", "sources").Output()
+		if err != nil {
+			return nil, err
+		}
+		var devs []string
+		for _, ln := range strings.Split(string(out), "\n") {
+			f := strings.Fields(ln)
+			if len(f) >= 2 {
+				devs = append(devs, f[1]) // column “name”
+			}
+		}
+		sort.Strings(devs)
+		return devs, nil
+
+	case "windows":
+		out, _ := exec.Command("ffmpeg", "-list_devices", "true",
+			"-f", "dshow", "-i", "dummy").CombinedOutput()
+		re := regexp.MustCompile(`"(.+?)"$`)
+		m := re.FindAllStringSubmatch(string(out), -1)
+		var devs []string
+		for _, v := range m {
+			devs = append(devs, v[1])
+		}
+		return devs, nil
+
+	case "darwin":
+		out, _ := exec.Command("ffmpeg", "-f", "avfoundation",
+			"-list_devices", "true", "-i", "").CombinedOutput()
+		re := regexp.MustCompile(`\[(\d+)\] (.+)`)
+		m := re.FindAllStringSubmatch(string(out), -1)
+		var devs []string
+		for _, v := range m {
+			devs = append(devs, v[2])
+		}
+		return devs, nil
+	}
+	return nil, fmt.Errorf("unsupported OS")
+}
+
+func (gp *GoPronounce) showInputSettings() {
+	devs, err := listInputDevices()
+	if err != nil || len(devs) == 0 {
+		fynedialog.ShowError(fmt.Errorf("no capture devices found"), gp.window)
+		return
+	}
+
+	const defLabel = "<system default>"
+	devs = append([]string{defLabel}, devs...)
+
+	selectBox := widget.NewSelect(devs, func(sel string) {
+		if sel == defLabel {
+			recordDevice = "" // reset to default
+		} else {
+			recordDevice = sel // explicit device
+		}
+	})
+	if recordDevice == "" {
+		selectBox.SetSelected(defLabel)
+	} else {
+		selectBox.SetSelected(recordDevice)
+	}
+	w := fyne.CurrentApp().NewWindow("Input device")
+	w.SetContent(container.NewVBox(
+		widget.NewLabel("Choose recording source:"),
+		selectBox,
+		widget.NewButton("OK", func() { w.Close() }),
+	))
+	w.Resize(fyne.NewSize(380, 160))
+	w.CenterOnScreen()
+	w.Show()
+}
+
 func main() {
 	myApp := app.NewWithID("com.audiorecorder.app")
 	myWindow := myApp.NewWindow("Audio Recorder with Reference")
@@ -608,7 +711,10 @@ func main() {
 
 	// Reference audio section
 	referenceSection := container.NewVBox(
-		widget.NewLabel("Reference Audio:"),
+		container.NewGridWithColumns(2,
+			widget.NewLabel("Reference Audio:"),
+			recorder.settingsBtn,
+		),
 		recorder.filePathEntry,
 		recorder.openBtn,
 		recorder.durationLabel,
