@@ -12,9 +12,10 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	fynedialog "fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
-	"github.com/sqweek/dialog"
+	nativedialog "github.com/sqweek/dialog"
 )
 
 const audioFileName = "goPronounceRecording.wav"
@@ -328,15 +329,14 @@ func (gp *GoPronounce) fileExists(path string) bool {
 }
 
 func (gp *GoPronounce) openNativePicker() {
-	filePath, err := dialog.
+	filePath, err := nativedialog.
 		File().
 		Title("Select audio file").
 		Filter("Audio", "wav", "mp3", "flac", "ogg").
 		Load()
 	if err != nil {
-		if err != dialog.Cancelled {
-			dialog.Message("%v", err).Title("Error").Error() // optional GUI error
-		}
+		// nativedialog.Message("%v", err).Title("Error").Error()
+		fynedialog.ShowError(err, gp.window)
 		return
 	}
 	// `path` is an absolute path string.
