@@ -17,7 +17,9 @@ import (
 	"github.com/sqweek/dialog"
 )
 
-const audioFile = "recording.wav"
+const audioFileName = "goPronounceRecording.wav"
+
+var audioFile = filepath.Join(os.TempDir(), audioFileName)
 
 // TimeInputWidget is a custom widget for time input with increment/decrement controls
 type TimeInputWidget struct {
@@ -210,7 +212,7 @@ func (w *TimeInputWidget) SetEnabled(enabled bool) {
 	w.container.Refresh()
 }
 
-type AudioRecorder struct {
+type GoPronounce struct {
 	isRecording  bool
 	isPlayingRef bool
 	isPlayingRec bool
@@ -239,93 +241,93 @@ type AudioRecorder struct {
 	window fyne.Window
 }
 
-func NewAudioRecorder(window fyne.Window) *AudioRecorder {
-	ar := &AudioRecorder{
+func NewGoPronounce(window fyne.Window) *GoPronounce {
+	gp := &GoPronounce{
 		window:        window,
 		statusLabel:   widget.NewLabel("Ready to record"),
 		durationLabel: widget.NewLabel("No reference file loaded"),
 	}
 
-	ar.openBtn = widget.NewButton("📁 Browse", ar.openNativePicker)
+	gp.openBtn = widget.NewButton("📁 Browse", gp.openNativePicker)
 
 	// Add file path entry
-	ar.filePathEntry = widget.NewEntry()
-	ar.filePathEntry.SetPlaceHolder("Enter audio file path or use Browse button")
-	ar.filePathEntry.Disable()
-	ar.filePathEntry.OnChanged = func(path string) {
-		if path != "" && ar.fileExists(path) {
-			ar.referenceFile = path
-			ar.statusLabel.SetText("Loading reference file...")
-			go ar.getAudioDuration()
+	gp.filePathEntry = widget.NewEntry()
+	gp.filePathEntry.SetPlaceHolder("Enter audio file path or use Browse button")
+	gp.filePathEntry.Disable()
+	gp.filePathEntry.OnChanged = func(path string) {
+		if path != "" && gp.fileExists(path) {
+			gp.referenceFile = path
+			gp.statusLabel.SetText("Loading reference file...")
+			go gp.getAudioDuration()
 		}
 	}
 
 	// Initialize time sliders
-	ar.startSlider = widget.NewSlider(0, 100)
-	ar.startSlider.SetValue(0)
-	ar.startSlider.OnChanged = func(value float64) {
-		if ar.audioDuration > 0 {
-			seconds := (value / 100) * ar.audioDuration
-			ar.startTimeInput.SetTime(ar.formatTime(seconds))
+	gp.startSlider = widget.NewSlider(0, 100)
+	gp.startSlider.SetValue(0)
+	gp.startSlider.OnChanged = func(value float64) {
+		if gp.audioDuration > 0 {
+			seconds := (value / 100) * gp.audioDuration
+			gp.startTimeInput.SetTime(gp.formatTime(seconds))
 		}
 	}
 
-	ar.endSlider = widget.NewSlider(0, 100)
-	ar.endSlider.SetValue(100)
-	ar.endSlider.OnChanged = func(value float64) {
-		if ar.audioDuration > 0 {
-			seconds := (value / 100) * ar.audioDuration
-			ar.endTimeInput.SetTime(ar.formatTime(seconds))
+	gp.endSlider = widget.NewSlider(0, 100)
+	gp.endSlider.SetValue(100)
+	gp.endSlider.OnChanged = func(value float64) {
+		if gp.audioDuration > 0 {
+			seconds := (value / 100) * gp.audioDuration
+			gp.endTimeInput.SetTime(gp.formatTime(seconds))
 		}
 	}
 
 	// Initialize custom time input widgets
-	ar.startTimeInput = NewTimeInputWidget()
-	ar.startTimeInput.SetEnabled(false)
-	ar.startSlider.Disable()
-	ar.startTimeInput.SetOnChanged(func(timeStr string) {
-		if ar.audioDuration > 0 {
-			seconds := ar.parseTime(timeStr)
-			if seconds >= 0 && seconds <= ar.audioDuration {
-				percentage := (seconds / ar.audioDuration) * 100
-				ar.startSlider.SetValue(percentage)
+	gp.startTimeInput = NewTimeInputWidget()
+	gp.startTimeInput.SetEnabled(false)
+	gp.startSlider.Disable()
+	gp.startTimeInput.SetOnChanged(func(timeStr string) {
+		if gp.audioDuration > 0 {
+			seconds := gp.parseTime(timeStr)
+			if seconds >= 0 && seconds <= gp.audioDuration {
+				percentage := (seconds / gp.audioDuration) * 100
+				gp.startSlider.SetValue(percentage)
 			}
 		}
 	})
 
-	ar.endTimeInput = NewTimeInputWidget()
-	ar.endTimeInput.SetEnabled(false)
-	ar.endSlider.Disable()
-	ar.endTimeInput.SetOnChanged(func(timeStr string) {
-		if ar.audioDuration > 0 {
-			seconds := ar.parseTime(timeStr)
-			if seconds >= 0 && seconds <= ar.audioDuration {
-				percentage := (seconds / ar.audioDuration) * 100
-				ar.endSlider.SetValue(percentage)
+	gp.endTimeInput = NewTimeInputWidget()
+	gp.endTimeInput.SetEnabled(false)
+	gp.endSlider.Disable()
+	gp.endTimeInput.SetOnChanged(func(timeStr string) {
+		if gp.audioDuration > 0 {
+			seconds := gp.parseTime(timeStr)
+			if seconds >= 0 && seconds <= gp.audioDuration {
+				percentage := (seconds / gp.audioDuration) * 100
+				gp.endSlider.SetValue(percentage)
 			}
 		}
 	})
 
-	ar.playRefBtn = widget.NewButton("▶️ Play Reference", ar.toggleReferencePlayback)
-	ar.playRefBtn.Disable()
+	gp.playRefBtn = widget.NewButton("▶️ Play Reference", gp.toggleReferencePlayback)
+	gp.playRefBtn.Disable()
 
-	ar.recordBtn = widget.NewButton("🎤 Record", ar.toggleRecording)
-	ar.playBtn = widget.NewButton("▶️ Play Recording", ar.toggleRecordingPlayback)
+	gp.recordBtn = widget.NewButton("🎤 Record", gp.toggleRecording)
+	gp.playBtn = widget.NewButton("▶️ Play Recording", gp.toggleRecordingPlayback)
 
 	// Initially disable play button if no recording exists
 	if _, err := os.Stat(audioFile); os.IsNotExist(err) {
-		ar.playBtn.Disable()
+		gp.playBtn.Disable()
 	}
 
-	return ar
+	return gp
 }
 
-func (ar *AudioRecorder) fileExists(path string) bool {
+func (gp *GoPronounce) fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
 
-func (ar *AudioRecorder) openNativePicker() {
+func (gp *GoPronounce) openNativePicker() {
 	filePath, err := dialog.
 		File().
 		Title("Select audio file").
@@ -339,21 +341,21 @@ func (ar *AudioRecorder) openNativePicker() {
 	}
 	// `path` is an absolute path string.
 	fmt.Println("Selected:", filePath)
-	ar.filePathEntry.SetText(filePath)
-	ar.referenceFile = filePath
-	ar.statusLabel.SetText("Loading reference file...")
+	gp.filePathEntry.SetText(filePath)
+	gp.referenceFile = filePath
+	gp.statusLabel.SetText("Loading reference file...")
 	// Load the audio duration in a goroutine
-	//go ar.getAudioDuration()
+	//go gp.getAudioDuration()
 }
 
-func (ar *AudioRecorder) getAudioDuration() {
+func (gp *GoPronounce) getAudioDuration() {
 	cmd := exec.Command("ffprobe", "-v", "quiet", "-show_entries",
-		"format=duration", "-of", "csv=p=0", ar.referenceFile)
+		"format=duration", "-of", "csv=p=0", gp.referenceFile)
 
 	output, err := cmd.Output()
 	if err != nil {
 		fyne.Do(func() {
-			ar.statusLabel.SetText("Error reading audio file. Make sure ffmpeg is installed.")
+			gp.statusLabel.SetText("Error reading audio file. Make sure ffmpeg is installed.")
 		})
 		return
 	}
@@ -362,35 +364,35 @@ func (ar *AudioRecorder) getAudioDuration() {
 	duration, err := strconv.ParseFloat(durationStr, 64)
 	if err != nil {
 		fyne.Do(func() {
-			ar.statusLabel.SetText("Error parsing audio duration")
+			gp.statusLabel.SetText("Error parsing audio duration")
 		})
 		return
 	}
 
-	ar.audioDuration = duration
+	gp.audioDuration = duration
 
 	fyne.Do(func() {
-		ar.durationLabel.SetText(fmt.Sprintf("Duration: %s", ar.formatTime(duration)))
-		ar.endTimeInput.SetTime(ar.formatTime(duration))
-		ar.endTimeInput.SetMaxDuration(duration)
-		ar.startTimeInput.SetMaxDuration(duration)
-		ar.endSlider.SetValue(100)
-		ar.startTimeInput.SetEnabled(true)
-		ar.endTimeInput.SetEnabled(true)
-		ar.startSlider.Enable()
-		ar.endSlider.Enable()
-		ar.playRefBtn.Enable()
-		ar.statusLabel.SetText(fmt.Sprintf("Reference loaded: %s", filepath.Base(ar.referenceFile)))
+		gp.durationLabel.SetText(fmt.Sprintf("Duration: %s", gp.formatTime(duration)))
+		gp.endTimeInput.SetTime(gp.formatTime(duration))
+		gp.endTimeInput.SetMaxDuration(duration)
+		gp.startTimeInput.SetMaxDuration(duration)
+		gp.endSlider.SetValue(100)
+		gp.startTimeInput.SetEnabled(true)
+		gp.endTimeInput.SetEnabled(true)
+		gp.startSlider.Enable()
+		gp.endSlider.Enable()
+		gp.playRefBtn.Enable()
+		gp.statusLabel.SetText(fmt.Sprintf("Reference loaded: %s", filepath.Base(gp.referenceFile)))
 	})
 }
 
-func (ar *AudioRecorder) formatTime(seconds float64) string {
+func (gp *GoPronounce) formatTime(seconds float64) string {
 	mins := int(seconds) / 60
 	secs := int(seconds) % 60
 	return fmt.Sprintf("%02d:%02d", mins, secs)
 }
 
-func (ar *AudioRecorder) parseTime(timeStr string) float64 {
+func (gp *GoPronounce) parseTime(timeStr string) float64 {
 	parts := strings.Split(timeStr, ":")
 	if len(parts) != 2 {
 		return 0
@@ -401,31 +403,31 @@ func (ar *AudioRecorder) parseTime(timeStr string) float64 {
 	return float64(mins*60 + secs)
 }
 
-func (ar *AudioRecorder) toggleReferencePlayback() {
-	if ar.isPlayingRef {
-		ar.stopReferencePlayback()
+func (gp *GoPronounce) toggleReferencePlayback() {
+	if gp.isPlayingRef {
+		gp.stopReferencePlayback()
 	} else {
-		ar.playReference()
+		gp.playReference()
 	}
 }
 
-func (ar *AudioRecorder) playReference() {
-	if ar.referenceFile == "" {
-		ar.statusLabel.SetText("No reference file loaded")
+func (gp *GoPronounce) playReference() {
+	if gp.referenceFile == "" {
+		gp.statusLabel.SetText("No reference file loaded")
 		return
 	}
 
-	startTime := ar.parseTime(ar.startTimeInput.GetTime())
-	endTime := ar.parseTime(ar.endTimeInput.GetTime())
+	startTime := gp.parseTime(gp.startTimeInput.GetTime())
+	endTime := gp.parseTime(gp.endTimeInput.GetTime())
 
 	if endTime <= startTime {
-		ar.statusLabel.SetText("End time must be greater than start time")
+		gp.statusLabel.SetText("End time must be greater than start time")
 		return
 	}
 
-	if endTime > ar.audioDuration {
-		endTime = ar.audioDuration
-		ar.endTimeInput.SetTime(ar.formatTime(endTime))
+	if endTime > gp.audioDuration {
+		endTime = gp.audioDuration
+		gp.endTimeInput.SetTime(gp.formatTime(endTime))
 	}
 
 	duration := endTime - startTime
@@ -435,68 +437,68 @@ func (ar *AudioRecorder) playReference() {
 	switch runtime.GOOS {
 	case "windows":
 		cmd = exec.Command("ffplay", "-ss", fmt.Sprintf("%.2f", startTime),
-			"-t", fmt.Sprintf("%.2f", duration), "-nodisp", "-autoexit", ar.referenceFile)
+			"-t", fmt.Sprintf("%.2f", duration), "-nodisp", "-autoexit", gp.referenceFile)
 	case "darwin":
 		// Create a temporary file with the segment for macOS
 		tempFile := "temp_segment.wav"
 		extractCmd := exec.Command("ffmpeg", "-ss", fmt.Sprintf("%.2f", startTime),
-			"-t", fmt.Sprintf("%.2f", duration), "-i", ar.referenceFile, "-y", tempFile)
+			"-t", fmt.Sprintf("%.2f", duration), "-i", gp.referenceFile, "-y", tempFile)
 		if err := extractCmd.Run(); err != nil {
-			ar.statusLabel.SetText("Error extracting audio segment")
+			gp.statusLabel.SetText("Error extracting audio segment")
 			return
 		}
 		cmd = exec.Command("afplay", tempFile)
 		defer os.Remove(tempFile) // Clean up temp file
 	case "linux":
 		cmd = exec.Command("ffplay", "-ss", fmt.Sprintf("%.2f", startTime),
-			"-t", fmt.Sprintf("%.2f", duration), "-nodisp", "-autoexit", ar.referenceFile)
+			"-t", fmt.Sprintf("%.2f", duration), "-nodisp", "-autoexit", gp.referenceFile)
 	default:
-		ar.statusLabel.SetText("Unsupported operating system for reference playback")
+		gp.statusLabel.SetText("Unsupported operating system for reference playback")
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		ar.statusLabel.SetText("Error starting reference playback")
+		gp.statusLabel.SetText("Error starting reference playback")
 		return
 	}
 
-	ar.playRefCmd = cmd
-	ar.isPlayingRef = true
-	ar.playRefBtn.SetText("⏹️ Stop Reference")
-	ar.statusLabel.SetText(fmt.Sprintf("Playing reference (%.1fs)", duration))
+	gp.playRefCmd = cmd
+	gp.isPlayingRef = true
+	gp.playRefBtn.SetText("⏹️ Stop Reference")
+	gp.statusLabel.SetText(fmt.Sprintf("Playing reference (%.1fs)", duration))
 
 	go func() {
 		cmd.Wait()
 		fyne.Do(func() {
-			ar.isPlayingRef = false
-			ar.playRefBtn.SetText("▶️ Play Reference")
-			ar.statusLabel.SetText("Reference playback finished")
+			gp.isPlayingRef = false
+			gp.playRefBtn.SetText("▶️ Play Reference")
+			gp.statusLabel.SetText("Reference playback finished")
 		})
-		ar.playRefCmd = nil
+		gp.playRefCmd = nil
 	}()
 }
 
-func (ar *AudioRecorder) stopReferencePlayback() {
-	if ar.playRefCmd != nil {
-		ar.playRefCmd.Process.Kill()
-		ar.playRefCmd.Wait()
-		ar.playRefCmd = nil
+func (gp *GoPronounce) stopReferencePlayback() {
+	if gp.playRefCmd != nil {
+		gp.playRefCmd.Process.Kill()
+		gp.playRefCmd.Wait()
+		gp.playRefCmd = nil
 	}
 
-	ar.isPlayingRef = false
-	ar.playRefBtn.SetText("▶️ Play Reference")
-	ar.statusLabel.SetText("Reference playback stopped")
+	gp.isPlayingRef = false
+	gp.playRefBtn.SetText("▶️ Play Reference")
+	gp.statusLabel.SetText("Reference playback stopped")
 }
 
-func (ar *AudioRecorder) toggleRecording() {
-	if ar.isRecording {
-		ar.stopRecording()
+func (gp *GoPronounce) toggleRecording() {
+	if gp.isRecording {
+		gp.stopRecording()
 	} else {
-		ar.startRecording()
+		gp.startRecording()
 	}
 }
 
-func (ar *AudioRecorder) startRecording() {
+func (gp *GoPronounce) startRecording() {
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
@@ -507,46 +509,46 @@ func (ar *AudioRecorder) startRecording() {
 	case "linux":
 		cmd = exec.Command("arecord", "-f", "cd", "-t", "wav", audioFile)
 	default:
-		ar.statusLabel.SetText("Unsupported operating system")
+		gp.statusLabel.SetText("Unsupported operating system")
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		ar.statusLabel.SetText(fmt.Sprintf("Error starting recording: %v", err))
+		gp.statusLabel.SetText(fmt.Sprintf("Error starting recording: %v", err))
 		return
 	}
 
-	ar.recordCmd = cmd
-	ar.isRecording = true
-	ar.recordBtn.SetText("⏹️ Stop")
-	ar.playBtn.Disable()
-	ar.statusLabel.SetText("Recording...")
+	gp.recordCmd = cmd
+	gp.isRecording = true
+	gp.recordBtn.SetText("⏹️ Stop")
+	gp.playBtn.Disable()
+	gp.statusLabel.SetText("Recording...")
 }
 
-func (ar *AudioRecorder) stopRecording() {
-	if ar.recordCmd != nil {
-		ar.recordCmd.Process.Kill()
-		ar.recordCmd.Wait()
-		ar.recordCmd = nil
+func (gp *GoPronounce) stopRecording() {
+	if gp.recordCmd != nil {
+		gp.recordCmd.Process.Kill()
+		gp.recordCmd.Wait()
+		gp.recordCmd = nil
 	}
 
-	ar.isRecording = false
-	ar.recordBtn.SetText("🎤 Record")
-	ar.playBtn.Enable()
-	ar.statusLabel.SetText("Recording saved to " + audioFile)
+	gp.isRecording = false
+	gp.recordBtn.SetText("🎤 Record")
+	gp.playBtn.Enable()
+	gp.statusLabel.SetText("Recording saved to " + audioFile)
 }
 
-func (ar *AudioRecorder) toggleRecordingPlayback() {
-	if ar.isPlayingRec {
-		ar.stopRecordingPlayback()
+func (gp *GoPronounce) toggleRecordingPlayback() {
+	if gp.isPlayingRec {
+		gp.stopRecordingPlayback()
 	} else {
-		ar.playRecording()
+		gp.playRecording()
 	}
 }
 
-func (ar *AudioRecorder) playRecording() {
+func (gp *GoPronounce) playRecording() {
 	if _, err := os.Stat(audioFile); os.IsNotExist(err) {
-		ar.statusLabel.SetText("No recording found")
+		gp.statusLabel.SetText("No recording found")
 		return
 	}
 
@@ -560,41 +562,41 @@ func (ar *AudioRecorder) playRecording() {
 	case "linux":
 		cmd = exec.Command("aplay", audioFile)
 	default:
-		ar.statusLabel.SetText("Unsupported operating system for playback")
+		gp.statusLabel.SetText("Unsupported operating system for playback")
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
-		ar.statusLabel.SetText("Error starting recording playback")
+		gp.statusLabel.SetText("Error starting recording playback")
 		return
 	}
 
-	ar.playRecCmd = cmd
-	ar.isPlayingRec = true
-	ar.playBtn.SetText("⏹️ Stop Playing")
-	ar.statusLabel.SetText("Playing recording...")
+	gp.playRecCmd = cmd
+	gp.isPlayingRec = true
+	gp.playBtn.SetText("⏹️ Stop Playing")
+	gp.statusLabel.SetText("Playing recording...")
 
 	go func() {
 		cmd.Wait()
 		fyne.Do(func() {
-			ar.isPlayingRec = false
-			ar.playBtn.SetText("▶️ Play Recording")
-			ar.statusLabel.SetText("Recording playback finished")
+			gp.isPlayingRec = false
+			gp.playBtn.SetText("▶️ Play Recording")
+			gp.statusLabel.SetText("Recording playback finished")
 		})
-		ar.playRecCmd = nil
+		gp.playRecCmd = nil
 	}()
 }
 
-func (ar *AudioRecorder) stopRecordingPlayback() {
-	if ar.playRecCmd != nil {
-		ar.playRecCmd.Process.Kill()
-		ar.playRecCmd.Wait()
-		ar.playRecCmd = nil
+func (gp *GoPronounce) stopRecordingPlayback() {
+	if gp.playRecCmd != nil {
+		gp.playRecCmd.Process.Kill()
+		gp.playRecCmd.Wait()
+		gp.playRecCmd = nil
 	}
 
-	ar.isPlayingRec = false
-	ar.playBtn.SetText("▶️ Play Recording")
-	ar.statusLabel.SetText("Recording playback stopped")
+	gp.isPlayingRec = false
+	gp.playBtn.SetText("▶️ Play Recording")
+	gp.statusLabel.SetText("Recording playback stopped")
 }
 
 func main() {
@@ -602,7 +604,7 @@ func main() {
 	myWindow := myApp.NewWindow("Audio Recorder with Reference")
 	myWindow.Resize(fyne.NewSize(600, 450))
 
-	recorder := NewAudioRecorder(myWindow)
+	recorder := NewGoPronounce(myWindow)
 
 	// Reference audio section
 	referenceSection := container.NewVBox(

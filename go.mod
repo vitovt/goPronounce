@@ -1,4 +1,4 @@
-module go2player
+module goPronounce
 
 go 1.23.2
 
