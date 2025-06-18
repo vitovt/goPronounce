@@ -449,7 +449,7 @@ func (gp *GoPronounce) playReference() {
 			"-t", fmt.Sprintf("%.2f", duration), "-nodisp", "-autoexit", gp.referenceFile)
 	case "darwin":
 		// Create a temporary file with the segment for macOS
-		tempFile := "temp_segment.wav"
+		tempFile := filepath.Join(os.TempDir(), "temp_segment.wav")
 		extractCmd := exec.Command("ffmpeg", "-ss", fmt.Sprintf("%.2f", startTime),
 			"-t", fmt.Sprintf("%.2f", duration), "-i", gp.referenceFile, "-y", tempFile)
 		if err := extractCmd.Run(); err != nil {
