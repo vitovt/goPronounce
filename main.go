@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -539,6 +540,7 @@ func (gp *GoPronounce) startRecording() {
 		return
 	}
 
+	log.Printf("Executing Command: %v", commandArgs)
 	cmd = exec.Command(commandArgs[0], commandArgs[1:]...)
 
 	if err := cmd.Start(); err != nil {
@@ -691,6 +693,8 @@ func (gp *GoPronounce) showInputSettings() {
 	} else {
 		selectBox.SetSelected(recordDevice)
 	}
+	log.Printf("recordDevice: %v", recordDevice)
+
 	w := fyne.CurrentApp().NewWindow("Input device")
 	w.SetContent(container.NewVBox(
 		widget.NewLabel("Choose recording source:"),
