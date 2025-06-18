@@ -707,8 +707,8 @@ func (gp *GoPronounce) showInputSettings() {
 }
 
 func main() {
-	myApp := app.NewWithID("com.audiorecorder.app")
-	myWindow := myApp.NewWindow("Audio Recorder with Reference")
+	myApp := app.NewWithID("com.gopronounce.app")
+	myWindow := myApp.NewWindow("Trainer for sharpening pronunciation")
 	myWindow.Resize(fyne.NewSize(600, 450))
 
 	recorder := NewGoPronounce(myWindow)
