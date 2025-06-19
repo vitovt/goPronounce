@@ -35,8 +35,8 @@ VERSION=$(shell \
 
 OS_NAME=$$(uname -s)
 
-# Define the main Go file
-MAIN_FILE := main.go
+# Define the main Go file if we want to build a single file or '.' for the whole project
+MAIN_FILE := "."
 
 # Ensure the OUTPUT_DIR exists
 
@@ -168,12 +168,12 @@ build-windows: prepare
 
 build-docker-windows:
 	@echo "Building Windows binary in Docker..."
-	@DOCKER_BUILDKIT=1 docker build --build-arg APP_NAME=$(APP_NAME)-$(VERSION)_windows_$(GOARCH) -f Dockerfile.windows --output type=local,dest=./$(OUTPUT_DIR) .
+	@DOCKER_BUILDKIT=1 docker build --build-arg APP_NAME=$(APP_NAME)-$(VERSION)_windows_$(GOARCH) -f Dockerfile.windows --output type=local,dest=./$(OUTPUT_DIR) $(MAIN_FILE)
 	@echo "Windows Docker build completed: $(OUTPUT_DIR)/$(APP_NAME)-$(VERSION)_windows_$(GOARCH).exe"
 
 build-docker-linux:
 	@echo "Building Linux binary in Docker..."
-	@DOCKER_BUILDKIT=1 docker build --build-arg APP_NAME=$(APP_NAME)-$(VERSION)_linux_$(GOARCH) -f Dockerfile.linux --output type=local,dest=./$(OUTPUT_DIR) .
+	@DOCKER_BUILDKIT=1 docker build --build-arg APP_NAME=$(APP_NAME)-$(VERSION)_linux_$(GOARCH) -f Dockerfile.linux --output type=local,dest=./$(OUTPUT_DIR) $(MAIN_FILE)
 	@echo "Linux Docker build completed: $(OUTPUT_DIR)/$(APP_NAME)-$(VERSION)_linux_$(GOARCH)"
 
 # Build for all platforms
