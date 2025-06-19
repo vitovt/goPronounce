@@ -378,7 +378,7 @@ func (gp *GoPronounce) showInputSettings() {
 		selectBox,
 		widget.NewButton("OK", func() { w.Close() }),
 	))
-	w.Resize(fyne.NewSize(380, 160))
+	w.Resize(fyne.NewSize(680, 360))
 	w.CenterOnScreen()
 	w.Show()
 }
