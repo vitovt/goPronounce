@@ -166,6 +166,12 @@ func main() {
 
 	recorder := NewGoPronounce(myWindow)
 
+	//make sure every external audio process dies when the user quits.
+	myWindow.SetCloseIntercept(func() {
+		recorder.StopAllAudio() // defined in audio.go
+		myApp.Quit()            // closes the window afterwards
+	})
+
 	// Reference audio section
 	referenceSection := container.NewVBox(
 		container.NewGridWithColumns(2,

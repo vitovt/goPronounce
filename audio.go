@@ -333,3 +333,16 @@ func listInputDevices() ([]string, error) {
 	}
 	return nil, fmt.Errorf("unsupported OS")
 }
+
+// StopAllAudio makes sure *any* recording or playback process is killed.
+func (gp *GoPronounce) StopAllAudio() {
+	if gp.isRecording {
+		gp.stopRecording()
+	}
+	if gp.isPlayingRef {
+		gp.stopReferencePlayback()
+	}
+	if gp.isPlayingRec {
+		gp.stopRecordingPlayback()
+	}
+}
