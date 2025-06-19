@@ -265,7 +265,7 @@ func NewGoPronounce(window fyne.Window) *GoPronounce {
 	gp.startSlider.OnChanged = func(value float64) {
 		if gp.audioDuration > 0 {
 			seconds := (value / 100) * gp.audioDuration
-			gp.startTimeInput.SetTime(gp.formatTime(seconds))
+			gp.startTimeInput.SetTime(formatTime(seconds))
 		}
 	}
 
@@ -274,7 +274,7 @@ func NewGoPronounce(window fyne.Window) *GoPronounce {
 	gp.endSlider.OnChanged = func(value float64) {
 		if gp.audioDuration > 0 {
 			seconds := (value / 100) * gp.audioDuration
-			gp.endTimeInput.SetTime(gp.formatTime(seconds))
+			gp.endTimeInput.SetTime(formatTime(seconds))
 		}
 	}
 
@@ -284,7 +284,7 @@ func NewGoPronounce(window fyne.Window) *GoPronounce {
 	gp.startSlider.Disable()
 	gp.startTimeInput.SetOnChanged(func(timeStr string) {
 		if gp.audioDuration > 0 {
-			seconds := gp.parseTime(timeStr)
+			seconds := parseTime(timeStr)
 			if seconds >= 0 && seconds <= gp.audioDuration {
 				percentage := (seconds / gp.audioDuration) * 100
 				gp.startSlider.SetValue(percentage)
@@ -297,7 +297,7 @@ func NewGoPronounce(window fyne.Window) *GoPronounce {
 	gp.endSlider.Disable()
 	gp.endTimeInput.SetOnChanged(func(timeStr string) {
 		if gp.audioDuration > 0 {
-			seconds := gp.parseTime(timeStr)
+			seconds := parseTime(timeStr)
 			if seconds >= 0 && seconds <= gp.audioDuration {
 				percentage := (seconds / gp.audioDuration) * 100
 				gp.endSlider.SetValue(percentage)

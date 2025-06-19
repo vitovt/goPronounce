@@ -44,8 +44,8 @@ func (gp *GoPronounce) getAudioDuration() {
 	gp.audioDuration = duration
 
 	fyne.Do(func() {
-		gp.durationLabel.SetText(fmt.Sprintf("Duration: %s", gp.formatTime(duration)))
-		gp.endTimeInput.SetTime(gp.formatTime(duration))
+		gp.durationLabel.SetText(fmt.Sprintf("Duration: %s", formatTime(duration)))
+		gp.endTimeInput.SetTime(formatTime(duration))
 		gp.endTimeInput.SetMaxDuration(duration)
 		gp.startTimeInput.SetMaxDuration(duration)
 		gp.endSlider.SetValue(100)
@@ -58,13 +58,13 @@ func (gp *GoPronounce) getAudioDuration() {
 	})
 }
 
-func (gp *GoPronounce) formatTime(seconds float64) string {
+func formatTime(seconds float64) string {
 	mins := int(seconds) / 60
 	secs := int(seconds) % 60
 	return fmt.Sprintf("%02d:%02d", mins, secs)
 }
 
-func (gp *GoPronounce) parseTime(timeStr string) float64 {
+func parseTime(timeStr string) float64 {
 	parts := strings.Split(timeStr, ":")
 	if len(parts) != 2 {
 		return 0
@@ -89,8 +89,8 @@ func (gp *GoPronounce) playReference() {
 		return
 	}
 
-	startTime := gp.parseTime(gp.startTimeInput.GetTime())
-	endTime := gp.parseTime(gp.endTimeInput.GetTime())
+	startTime := parseTime(gp.startTimeInput.GetTime())
+	endTime := parseTime(gp.endTimeInput.GetTime())
 
 	if endTime <= startTime {
 		gp.statusLabel.SetText("End time must be greater than start time")
@@ -99,7 +99,7 @@ func (gp *GoPronounce) playReference() {
 
 	if endTime > gp.audioDuration {
 		endTime = gp.audioDuration
-		gp.endTimeInput.SetTime(gp.formatTime(endTime))
+		gp.endTimeInput.SetTime(formatTime(endTime))
 	}
 
 	duration := endTime - startTime
